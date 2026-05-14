@@ -6,11 +6,15 @@ from face_recognition_system.detectors import FaceDetector
 import face_recognition_system.operations as op
 import cv2
 from cv2 import __version__
-import csv
 import time
+import csv
 
-c = csv.writer(open("a.csv", "wb"))
-c.writerow(time.strftime("%d/%m/%Y").split())
+def create_recognizer(choice):
+    if choice == 1:
+        return cv2.face.EigenFaceRecognizer_create(), 3500
+    if choice == 2:
+        return cv2.face.FisherFaceRecognizer_create(), 300
+    return cv2.face.LBPHFaceRecognizer_create(), 100
 
 def get_images(frame, faces_coord, shape):
     if shape == "rectangle":
@@ -37,6 +41,8 @@ def add_person(people_folder, shape, person):
         cv2.namedWindow('Saved Face', cv2.WINDOW_NORMAL)
         while counter < 21:
             frame = video.get_frame()
+            if frame is None:
+                raise RuntimeError("Could not read from camera")
             face_coord = detector.detect(frame)
             if len(face_coord):
                 frame, face_img = get_images(frame, face_coord, shape)
@@ -46,25 +52,33 @@ def add_person(people_folder, shape, person):
                 if timer % 100 == 5:
                     cv2.imwrite(folder + '/' + str(counter) + '.jpg',
                                 face_img[0])
-                    print 'Images Saved:' + str(counter)
+                    print('Images Saved:' + str(counter))
                     counter += 1
                     cv2.imshow('Saved Face', face_img[0])
 
             cv2.imshow('Video Feed', frame)
             cv2.waitKey(50)
             timer += 5
+        cv2.destroyAllWindows()
     else:
-        print "This name already exists."
-        sys.exit()
+        raise FileExistsError("This name already exists.")
 
 
 def recognize_people(people_folder, shape):
     # type: (object, object) -> object
+    attendance_file = open("a.csv", "w", newline="")
+    c = csv.writer(attendance_file)
+    c.writerow(time.strftime("%d/%m/%Y").split())
+
     try:
-        people = [person for person in os.listdir(people_folder)]
+        people = [
+            person for person in os.listdir(people_folder)
+            if os.path.isdir(os.path.join(people_folder, person))
+        ]
     except:
-        print "Have you added at least one person to the system?"
-        #sys.exit()
+        raise RuntimeError("Have you added at least one person to the system?")
+    if not people:
+        raise RuntimeError("Have you added at least one person to the system?")
     '''print "These are the people in the Recognition System:"
     for person in people:
         print "-" + person
@@ -80,33 +94,31 @@ def recognize_people(people_folder, shape):
     choice = 3
 
     detector = FaceDetector('haarcascade_frontalface_default.xml')
-    if choice == 1:
-        recognizer = cv2.createEigenFaceRecognizer()
-        threshold = 3500
-    elif choice == 2:
-        recognizer = cv2.createFisherFaceRecognizer()
-        threshold = 300
-    elif choice == 3:
-        recognizer = cv2.createLBPHFaceRecognizer()
-        threshold = 100
+    recognizer, threshold = create_recognizer(choice)
     images = []
     labels = []
     labels_people = {}
     for i, person in enumerate(people):
         labels_people[i] = person
         for image in os.listdir(people_folder + person):
-            images.append(cv2.imread(people_folder + person + '/' + image, 0))
-            labels.append(i)
+            image_path = people_folder + person + '/' + image
+            training_image = cv2.imread(image_path, 0)
+            if training_image is not None:
+                images.append(training_image)
+                labels.append(i)
+    if not images:
+        raise RuntimeError("No training images found")
     try:
         recognizer.train(images, np.array(labels))
-    except:
-        print "\nOpenCV Error: Do you have at least two people in the database?\n"
-        #sys.exit()
+    except Exception as error:
+        raise RuntimeError("OpenCV could not train on the stored images: %s" % error)
 
     video = VideoCamera()
 
     while True:
             frame = video.get_frame()
+            if frame is None:
+                raise RuntimeError("Could not read from camera")
             faces_coord = detector.detect(frame, False)
             if len(faces_coord):
                 frame, faces_img = get_images(frame, faces_coord, shape)
@@ -119,27 +131,30 @@ def recognize_people(people_folder, shape):
                     else:
                         pred, conf = recognizer.predict(face_img)
 
-                    print "Prediction: " + str(pred)
-                    print 'Confidence: ' + str(round(conf))
-                    print 'Threshold: ' + str(threshold)
+                    print("Prediction: " + str(pred))
+                    print('Confidence: ' + str(round(conf)))
+                    print('Threshold: ' + str(threshold))
 
                     if conf < threshold:
                         cv2.putText(frame, labels_people[pred].capitalize(),
                                     (faces_coord[i][0], faces_coord[i][1] - 2),
                                     cv2.FONT_HERSHEY_PLAIN, 1.7, (206, 0, 209), 2,
-                                    cv2.CV_AA)
+                                    cv2.LINE_AA)
                         c.writerow(people[pred].split())
                     else:
                         cv2.putText(frame, "Unknown",
                                     (faces_coord[i][0], faces_coord[i][1] - 2),
                                     cv2.FONT_HERSHEY_PLAIN, 1.7, (206, 0, 209), 2,
-                                    cv2.CV_AA)
+                                    cv2.LINE_AA)
 
             cv2.putText(frame, "ESC to exit", (5, frame.shape[0] - 5),
-                        cv2.FONT_HERSHEY_PLAIN, 1.2, (206, 0, 209), 2, cv2.CV_AA)
+                        cv2.FONT_HERSHEY_PLAIN, 1.2, (206, 0, 209), 2, cv2.LINE_AA)
             cv2.imshow('Video', frame)
             if cv2.waitKey(100) & 0xFF == 27:
-                exit()
+                break
+
+    attendance_file.close()
+    cv2.destroyAllWindows()
 
 def check_choice():
     """ Check if choice is good
@@ -147,23 +162,23 @@ def check_choice():
     is_valid = 0
     while not is_valid:
         try:
-            choice = int(raw_input('Enter your choice [1-3] : '))
+            choice = int(input('Enter your choice [1-3] : '))
             if choice in [1, 2, 3]:
                 is_valid = 1
             else:
-                print "'%d' is not an option.\n" % choice
-        except ValueError, error:
-            print "%s is not an option.\n" % str(error).split(": ")[1]
+                print("'%d' is not an option.\n" % choice)
+        except ValueError as error:
+            print("%s is not an option.\n" % str(error).split(": ")[1])
     return choice
 
 if __name__ == '__main__':
-    print 30 * '-'
-    print "   POSSIBLE ACTIONS"
-    print 30 * '-'
-    print "1. Add person to the recognizer system"
-    print "2. Start recognizer"
-    print "3. Exit"
-    print 30 * '-'
+    print(30 * '-')
+    print("   POSSIBLE ACTIONS")
+    print(30 * '-')
+    print("1. Add person to the recognizer system")
+    print("2. Start recognizer")
+    print("3. Exit")
+    print(30 * '-')
 
     CHOICE = check_choice()
 
