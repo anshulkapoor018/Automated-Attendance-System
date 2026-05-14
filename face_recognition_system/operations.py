@@ -38,9 +38,9 @@ def cut_face_rectangle(image, face_coord):
 def cut_face_ellipse(image, face_coord):
     images_ellipse = []
     for (x, y, w, h) in face_coord:
-        center = (x + w / 2, y + h / 2)
-        axis_major = h / 2
-        axis_minor = w / 2
+        center = (x + w // 2, y + h // 2)
+        axis_major = h // 2
+        axis_minor = w // 2
         mask = np.zeros_like(image)
         # create a white filled ellipse
         mask = cv2.ellipse(mask,
@@ -68,9 +68,9 @@ def draw_face_ellipse(image, faces_coord):
     """ Draws an ellipse around the face found.
     """
     for (x, y, w, h) in faces_coord:
-        center = (x + w / 2, y + h / 2)
-        axis_major = h / 2
-        axis_minor = w / 2
+        center = (x + w // 2, y + h // 2)
+        axis_major = h // 2
+        axis_minor = w // 2
         cv2.ellipse(image,
                     center=center,
                     axes=(axis_major, axis_minor),
